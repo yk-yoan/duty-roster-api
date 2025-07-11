@@ -1,40 +1,75 @@
-// app/api/send-log-summary/route.ts
-import { NextResponse } from 'next/server';
-import { resend } from '@/lib/resend';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/firebase-admin';
+import { resend } from '@/lib/resend';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const today = new Date();
-  const snapshot = await db
-    .collection('exchangeLogs')
-    .where('timestamp', '>=', new Date(today.setHours(0, 0, 0, 0)).toISOString())
-    .get();
-
-  if (snapshot.empty) {
-    return NextResponse.json({ message: 'No new logs for today' });
-  }
-
-  const logs = snapshot.docs.map((doc) => doc.data());
-
-  const emailContent = logs
-    .map((log) =>
-      log.mode === 'exchange'
-        ? `${log.myDate}(${log.myType}) ⇄ ${log.targetDate}(${log.targetType})`
-        : `${log.date}(${log.type}) を譲渡`
-    )
-    .join('<br />');
+  today.setHours(0, 0, 0, 0);
 
   try {
+    // ログを取得（当日以降の更新のみ）
+    const logsSnapshot = await db
+      .collection('exchangeLogs')
+      .where('timestamp', '>=', today.toISOString())
+      .get();
+
+    if (logsSnapshot.empty) {
+      return NextResponse.json({ message: 'No logs today' });
+    }
+
+    const logs = logsSnapshot.docs.map((doc) => doc.data());
+
+    // 医師情報をマッピング
+    const doctorIds = Array.from(
+      new Set([
+        ...logs.map((log) => log.fromDoctorId),
+        ...logs.map((log) => log.toDoctorId),
+      ])
+    ).filter(Boolean);
+
+    const doctorSnapshots = await Promise.all(
+      doctorIds.map((id) => db.collection('doctors').doc(id).get())
+    );
+
+    const doctorMap = new Map<string, string>();
+    doctorSnapshots.forEach((doc) => {
+      if (doc.exists) {
+        doctorMap.set(doc.id, doc.data()?.name || '不明');
+      }
+    });
+
+    // メール本文生成
+    const emailItems = logs.map((log) => {
+      const fromName = doctorMap.get(log.fromDoctorId) ?? '不明';
+      const toName = doctorMap.get(log.toDoctorId) ?? '不明';
+
+      if (log.mode === 'exchange') {
+        return `<li>${log.myDate} ${log.myType}（${fromName}） ⇨ ${log.targetType}（${toName}）</li>`;
+      } else {
+        return `<li>${log.date} ${log.type}（${fromName}） ⇨ 譲渡（${toName}）</li>`;
+      }
+    });
+
+    const emailHtml = `
+      <div>
+        <strong>＝当直表の更新がありました＝</strong><br /><br />
+        <ul>
+          ${emailItems.join('')}
+        </ul>
+      </div>
+    `;
+
+    // メール送信
     await resend.emails.send({
-      from: 'duty-roster@resend.dev',
+      from: 'duty-roster@example.com',
       to: process.env.NOTIFY_EMAIL as string,
       subject: '日当直交換ログ通知',
-      html: `<div>本日更新されたログ:<br />${emailContent}</div>`,
+      html: emailHtml,
     });
 
     return NextResponse.json({ message: 'Email sent successfully' });
   } catch (error) {
-    console.error('Email error:', error);
+    console.error('送信エラー:', error);
     return NextResponse.json({ error: 'Failed to send email' }, { status: 500 });
   }
 }
