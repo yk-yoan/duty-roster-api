@@ -2,7 +2,7 @@
   "cron": [
     {
       "path": "/api/send-log-summary",
-      "schedule": "0 8 * * *",
+      "schedule": "0 * * * *",
       "timezone": "Asia/Tokyo"
     }
   ]
