@@ -22,14 +22,14 @@ export async function GET(req: NextRequest) {
   }));
 
   const emailContent = logs
-    .map((log: any) => {
-      const from = log.fromDoctorName ?? '';
-      const to = log.toDoctorName ?? '';
-      return log.mode === 'exchange'
-        ? `・${log.myDate}（${log.myType}：${from}）⇄ ${log.targetDate}（${log.targetType}：${to}）`
-        : `・${log.date}（${log.type}：${from}）→ ${to} に譲渡`;
-    })
-    .join('<br />');
+  .map((log: any) => {
+    const from = log.fromDoctorName ?? '';
+    const to = log.toDoctorName ?? '';
+    return log.mode === 'exchange'
+      ? `・${log.myDate}（${log.myType}：${from}）⇄ ${log.targetDate}（${log.targetType}：${to}）`
+      : `・${log.date}（${log.type}：${from}）→ ${to} に譲渡`;
+  })
+  .join('<br />');
 
   try {
     await resend.emails.send({
