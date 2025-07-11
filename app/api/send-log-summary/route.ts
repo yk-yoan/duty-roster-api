@@ -26,7 +26,7 @@ export async function GET() {
 
   try {
     await resend.emails.send({
-      from: 'duty-roster@example.com',
+      from: 'duty-roster@resend.dev',
       to: process.env.NOTIFY_EMAIL as string,
       subject: '日当直交換ログ通知',
       html: `<div>本日更新されたログ:<br />${emailContent}</div>`,
